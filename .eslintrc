@@ -1,0 +1,23 @@
+{
+  "parserOptions": {
+    "ecmaVersion": 6
+  },
+  "plugins": [
+    "vue"
+  ],
+  "rules": {
+    "semi": [
+      "error",
+      "never"
+    ],
+    "quotes": [
+      "error",
+      "single"
+    ],
+    "no-implicit-globals": "error",
+    "brace-style": [
+      "error",
+      "allman"
+    ]
+  }
+}
