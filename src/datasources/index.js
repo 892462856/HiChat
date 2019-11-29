@@ -1,189 +1,186 @@
 import axios from 'axios'
-import { GetTarget, GetGroupMember } from '@/assets/js/Types'
-
-const instance = axios.create({
-    // baseURL: 'http://test.ybapp.me/test/',
-    // baseURL: 'api',
-    baseURL: window.rootPath || process.env.VUE_APP_BASEPATH,
-    timeout: 1000 * 10,
-    // withCredentials: true,
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' }
-})
 
 /**
- * axios请求error监听器
- * @param {Number} type request=0,response=1
- * @param {*} error
+ * 创建axios实例
+ * @param {(type,error)=>{}} commonErrorMonitor type(request=0,response=1)
  */
-let errorMonitor = (type, error) => {
-    console.log(type, error)
-}
+const createAxiosInstance = function (commonErrorMonitor)
+{
+  const instance = axios.create({
+    // baseURL: 'http://test.ybapp.me/test/',
+    // baseURL: 'api',
+    baseURL: process.env.VUE_APP_BASEPATH,
+    timeout: 1000 * 3,
+    // withCredentials: true,
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' }
+  })
 
-instance.interceptors.request.use((config) => {
+  instance.interceptors.request.use((config) =>
+  {
     const contentType = config.headers['Content-Type'].toLocaleLowerCase()
-    if (contentType.indexOf('application/x-www-form-urlencoded') > -1) {
-        config.data = Object.entries(config.data).map(t => `${t[0]}=${t[1]}`).join('&')
+    if (contentType.indexOf('application/x-www-form-urlencoded') > -1)
+    {
+      config.data = Object.entries(config.data).map(t => `${t[0]}=${t[1]}`).join('&')
     }
     return config
-}, (error) => {
-    errorMonitor(0, error)
+  }, (error) =>
+  {
+    commonErrorMonitor(0, error)
     return Promise.reject(error)
-})
+  })
 
-instance.interceptors.response.use((response) => {
+  instance.interceptors.response.use((response) =>
+  {
     const { data } = response
-    if (data.resultCode < 1) {
-        if (data.message === '请重新登录') {
-            errorMonitor(1, data)
-        }
-        return Promise.reject(data) // {message: "用户不存在", resultCode: 0}
+    if (data.resultCode < 1)
+    {
+      if (data.message === '请重新登录')
+      {
+        commonErrorMonitor(1, data)
+      }
+      return Promise.reject(data) // {message: "用户不存在", resultCode: 0}
     }
-    if (data.sessionId) {
-        sessionStorage.setItem('sessionId', data.sessionId)
+    if (data.sessionId)
+    {
+      sessionStorage.setItem('sessionId', data.sessionId)
     }
     return data.data || data
-}, (error) => {
-    errorMonitor(1, error)
+  }, (error) =>
+  {
+    commonErrorMonitor(1, error)
     return Promise.reject(error)
-})
+  })
 
-const getSessionId = () => sessionStorage.getItem('sessionId')
-
-const operate = {
-    setCommonErrorMonitor(func) {
-        errorMonitor = func
-    },
-    login({ name, password, region }) {
-        return instance.post('f/login', { username: name, password, region, deviceType: '3' }).then(user => GetTarget(user))
-    },
-    register({ telephone, password, name, fileContent, deviceId, activeCode, deviceType, region, extention, logoName }) {
-        return instance.post('f/register2', { telephone, userName: telephone, password, nickName: name, fileContent, deviceId, activeCode, deviceType, region, extention, logoName })
-    },
-    registerVerifyCode({ telephone, region }) {
-        return instance.post('f/registerMessage', { telephone, region })
-    },
-    logout({ telephone }) {
-        return instance.post('f/logout', { userName: telephone, sessionId: getSessionId() })
-    },
-    logouted() {
-        sessionStorage.removeItem('sessionId')
-    },
-
-    getFriends() {
-        return instance.post('f/getUserFriend', { sessionId: getSessionId() }).then(data => {
-            let list = data instanceof Array ? data : []
-            list = list.map(t => GetTarget(t))
-            return list
-        })
-    },
-    getGroups() {
-        return instance.post('f/getUserGroup', { sessionId: getSessionId() }).then(data => {
-            let list = data instanceof Array ? data : []
-            list = list.map(t => GetTarget(t))
-            return list
-        })
-    },
-    searchUser(keyword) {
-        return instance.post('f/searchChatUser', { key: keyword, pageSize: 100, pageIndex: 1 }).then(data => {
-            if (data && data.list) {
-                data.list = data.list.map(t => GetTarget(t))
-            }
-            return data
-        })
-    },
-    getUsersByTargetId(targetIds) {
-        if (targetIds.length === 0) return Promise.resolve([])
-
-        const xmppUserNames = targetIds.join(',')
-        return instance.post('f/getUserByXmpps', { sessionId: getSessionId(), xmppUserNames }).then(data => (data instanceof Array ? data : []).map(t => GetTarget(t)))
-    },
-    addFriend(telephone) {
-        return instance.post('f/addFriend', { sessionId: getSessionId(), userName: telephone }).then(user => GetTarget(user))
-    },
-    setBlackUserPwd(blackPWD) {
-        return instance.post('f/setBlackUserPwd', { sessionId: getSessionId(), blackPWD })
-    },
-    getBlackUsers(blackPWD) {
-        return instance.post('f/findBlackUser', { sessionId: getSessionId(), blackPWD }).then(data => (data instanceof Array ? data : []).map(t => GetTarget(t)))
-    },
-    addBlckUser(userIds) {
-        return instance.post('f/addBlckUser', { sessionId: getSessionId(), userIds: userIds.join(',') })
-    },
-    delBlckUser(userIds) {
-        return instance.post('f/delBlckUser', { sessionId: getSessionId(), userIds: userIds.join(',') })
-    },
-    /**
-     * 创建群
-     * @param {{ids:String[] }} param0
-     */
-    addGroup({ ids }) {
-        return instance.post('f/addGroup', { sessionId: getSessionId(), ids: ids.join(',') }).then(group => GetTarget(group))
-    },
-    updateGroupName({ name, id }) {
-        return instance.post('f/updateGroupName', { sessionId: getSessionId(), naturalName: name, roomId: id })
-    },
-    getGroupMembers(groupId) {
-        return instance.post('f/getRoomUser', { sessionId: getSessionId(), roomId: groupId }).then(data => {
-            const members = data instanceof Array ? data : []
-            return members.map(t => GetGroupMember(t))
-        })
-    },
-    addGroupMember(groupId, userIds) {
-        return instance.post('f/addUserToGroup', { groupId, ids: userIds })
-    },
-    removeGroupMember(groupId, userId) {
-        return instance.post('f/removeRoomMeber', { sessionId: getSessionId(), roomId: groupId, ids: userId })
-    },
-    updateGroupUserName({ groupId, userName }) {
-        return instance.post('f/updateGroupUserName', { sessionId: getSessionId(), roomId: groupId, nickName: userName })
-    }, // 修改我在群中的名称
-    exitGroup(targetId) {
-        return instance.post('f/exitRoom', { sessionId: getSessionId(), roomName: targetId })
-    },
-    deleteGroup(targetId) {
-        return instance.post('f/delGroup', { sessionId: getSessionId(), roomName: targetId })
-    },
-    setGroupCast(targetId, userTelephone) {
-        return instance.post('f/setRoomCast', { sessionId: getSessionId(), roomName: targetId, userName: userTelephone })
-    },
-
-    uploadFile(formData, { generatePic, isVideo, extention } = {}) { // , { generatePic = 1, isVideo } = {}
-        // return instance.post(`5436/fileupload.ashx?sessionId=${getSessionId()}&extention=${extention}${isVideo === 1 ? '&isVideo=1' : ''}${generatePic === 1 ? '&generatePic=1' : ''}`,
-        // return instance.post(`jeesite/f/postUploadFiles?gBase64=1&sessionId=${getSessionId()}&extention=${extention}${isVideo === 1 ? '&isVideo=1' : ''}${generatePic === 1 ? '&generatePic=1' : ''}`,
-        return instance.post(`f/postUploadFiles?gBase64=1&sessionId=${getSessionId()}&extention=${extention}${isVideo === 1 ? '&isVideo=1' : ''}${generatePic === 1 ? '&generatePic=1' : ''}`,
-            formData,
-            {
-                timeout: 10000,
-                headers: { 'Content-Type': 'multipart/form-data; charset=UTF-8' }
-            })
-    },
-
-    changeUserDetail({ telephone, nickName, fileContent, ex }) {
-        return instance.post('f/changeUserDetail', { sessionId: getSessionId(), userName: telephone, nickName, fileContent, ex })
-    },
-    changeUserDetail2(formData, { telephone, nickName, ex }) {
-        return instance.post(`f/changeUserDetail?sessionId=${getSessionId()}&userName=${telephone}&nickName=${nickName}&ex=${ex}`,
-            formData,
-            {
-                timeout: 10000,
-                headers: { 'Content-Type': 'multipart/form-data; charset=UTF-8' }
-            })
-    },
-    updateUserName({ telephone, activeCode, region }) {
-        return instance.post('f/updateUserName', { sessionId: getSessionId(), userName: telephone, activeCode, region })
-    },
-    changeTelMessage({ telephone, region }) {
-        return instance.post('f/changeTelMessage', { sessionId: getSessionId(), userName: telephone, region })
-    },
-    changPwd({ oldPwd, newPwd }) {
-        return instance.post('f/changPwd', { sessionId: getSessionId(), oldPwd, newPwd })
-    },
-    saveForgetPWD({ telephone, activeCode, newPwd }) {
-        return instance.post('f/SaveForgetPWD', { telephone, activeCode, newPwd })
-    },
-    forgetPWDMessage(telephone) {
-        return instance.post('f/forgetPWDMessage', { telephone })
-    }
+  return instance
 }
 
-export default operate
+export default class DataSource 
+{
+  constructor(commonErrorMonitor)
+  {
+    this.serve = createAxiosInstance(commonErrorMonitor)
+  }
+  login ({ mobile, password })
+  {
+    return this.serve.post('/login', { mobile, password })
+  }
+  register ({ mobile, password, name, ico, verifyCode })
+  {
+    return this.serve.put('/register', { mobile, password, name, ico, verifyCode })
+  }
+  registerVerifyCode ({ mobile })
+  {
+    return this.serve.get('/register/verifyCode', { mobile })
+  }
+  logout ()
+  {
+    return this.serve.post('/logout')
+  }
+
+  getFriends ()
+  {
+    return this.serve.get('/friend/list')
+  }
+  addFriend (mobile)
+  {
+    return this.serve.put('/friend', { mobile })
+  }
+  getBlacklist ()
+  {
+    return this.serve.post('/friend/black/list')
+  }
+  moveToBlacklist (id)
+  {
+    return this.serve.put('/friend/black', { id })
+  }
+  moveOutBlacklist (id)
+  {
+    return this.serve.delete('/friend/black', { id })
+  }
+
+  getGroups ()
+  {
+    return this.serve.get('/group/list')
+  }
+  addGroup ({ name, membersId })
+  {
+    return this.serve.put('/group', { name, membersId })
+  }
+  deleteGroup (id)
+  {
+    return this.serve.delete('/group', { id })
+  }
+  updateGroupName ({ name, id })
+  {
+    return this.serve.post('/group/name', { name, id })
+  }
+  getGroupMembers (groupId)
+  {
+    return this.serve.get('/groupMember/list', { groupId })
+  }
+  addGroupMembers (groupId, usersId)
+  {
+    return this.serve.put('/groupMember/list', { groupId, usersId })
+  }
+  removeGroupMember (groupId, userId)
+  {
+    return this.serve.delete('/groupMember', { groupId, userId })
+  }
+  exitGroup (groupId, userId)
+  {
+    return this.serve.post('/groupMember/exit', { groupId, userId })
+  }
+  updateGroupUserName ({ groupId, userId, userName })
+  {
+    return this.serve.post('/groupMember/userName', { groupId, userId, userName })
+  }
+
+  getUsers (ids)
+  {
+    if (ids.length === 0) return Promise.resolve([])
+    return this.serve.get('/user/list/byIds', { ids })
+  }
+  getUserByMobile (mobile)
+  {
+    return this.serve.get('/user/byMobile', { mobile })
+  }
+  updateUserIco ({ id, ico })
+  {
+    return this.serve.post('/user/ico', { id, ico })
+  }
+  updateUserName ({ id, name })
+  {
+    return this.serve.post('/user/name', { id, name })
+  }
+  updateMobile ({ mobile, verifyCode })
+  {
+    return this.serve.post('/user/mobile', { mobile, verifyCode })
+  }
+  updatePassword ({ oldPwd, newPwd })
+  {
+    return this.serve.post('/user/password', { oldPwd, newPwd })
+  }
+  updatePasswordByMobile ({ mobile, verifyCode, newPwd })
+  {
+    return this.serve.post('/user/password/byMobile', { mobile, verifyCode, newPwd })
+  } // 忘记密码,通过手机号找回
+  getMobileVerifyCode ({ mobile })
+  {
+    return this.serve.get('/user/mobile/verifyCode', { mobile })
+  }
+
+  /**
+   * 上传文件,返回{thumbnail:'base64,url:''}
+   * @param {*} formData file
+   * @param {*} param1 fileType('img'|'video'|'-')
+   */
+  uploadFile (formData, { requireThumbnail = false, fileType })
+  {
+    return this.serve.put(`/uploadFile?fileType=${fileType}&requireThumbnail=${requireThumbnail}`,
+      formData,
+      {
+        timeout: 10000,
+        headers: { 'Content-Type': 'multipart/form-data; charset=UTF-8' }
+      })
+  }
+}
