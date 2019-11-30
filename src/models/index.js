@@ -47,10 +47,75 @@ const Message = function ({ id, cid, type, senderId, targetId, targetType, conte
   // this.receiveTime = receiveTime
 }
 
+const Convr = function ({
+  targetId,
+  targetType,
+  senderId,
+  sentTime,
+  receivedTime,
+  unreadCount,
+  latestMessage: { id, cid, type, content, callList = [] }
+})
+{
+  this.targetId = targetId
+  this.targetType = targetType
+  this.senderId = senderId
+  this.sentTime = sentTime
+  this.receivedTime = receivedTime
+  this.unreadCount = unreadCount
+  this.latestMessage = { id, cid, type, content, callList }
+}
+
+
+const GetContentSketchByMessageContent = function (type, content)
+{
+  switch (type)
+  {
+    case 'text':
+      return content.content
+    case 'image':
+      return '[图片]'
+    case 'video':
+      return '[视频]'
+    case 'file':
+      return '[文件]'
+    case 'voice':
+      return '[语音]'
+    case 'HQVoice':
+      return '[语音]'
+    case 'sys':
+      return content.message
+    default:
+      return '……'
+  }
+}
+
+const MessageToConvr = function (msg, read = false)
+{
+  return new Convr({
+    targetId: msg.targetId,
+    targetType: msg.targetType,
+    senderId: msg.senderId,
+    sentTime: msg.sentTime,
+    receivedTime: msg.receivedTime,
+    unreadCount: read ? 0 : 1,
+    latestMessage: {
+      id: msg.id,
+      cid: msg.cid,
+      type: msg.type,
+      callList: msg.callList,
+      content: GetContentSketchByMessageContent(msg.type, msg.content)
+    }
+  })
+}
+
+
 export default {
   User,
   Friend,
   Group,
   GroupMember,
-  Message
+  Message,
+  Convr,
+  MessageToConvr
 }

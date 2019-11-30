@@ -2,11 +2,11 @@
  * 链接成功后才执行execute
  * @param {(resolve:(result)=>{}, reject:(error)=>{})=>{}} execute
  */
-function PromiseAfterConnected (execute) 
+function PromiseAfterConnected (status, execute) 
 {
   return new Promise((resolve, reject) => 
   {
-    if (true) 
+    if (status.code === 1) 
     {
       execute(resolve, reject)
     }
@@ -15,7 +15,7 @@ function PromiseAfterConnected (execute)
       let n = null
       n = setInterval(() => 
       {
-        if (true) 
+        if (status.code === 1) 
         {
           clearInterval(n)
           execute(resolve, reject)
@@ -83,11 +83,16 @@ export class Messager
   }
   send (message)
   {
-    if (this.status.code === 1)
-      return this.socket.send(message)
+    return PromiseAfterConnected(this.status, (resolve) =>
+    {
+      const result = this.socket.send(message)
+      console.log(result)
+      resolve()
+    })
   }
   close ()
   {
-    this.socket.close()
+    if (this.socket.readyState === 1)
+      this.socket.close()
   }
 }
