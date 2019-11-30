@@ -9,7 +9,6 @@ Vue.use(Vuex)
 const keys = {
   myInfo: 'myInfo',
   lmw: 'lmw',
-  // currentChatTarget: 'currentChatTarget',
   groups: 'groups',
   friends: 'friends',
   users: 'users',
@@ -121,7 +120,6 @@ const store = new Vuex.Store({
     },
     update_myInfo (state, myInfo)
     {
-      // debugger
       caches.set(keys.myInfo, myInfo)
       state.myInfo = myInfo
     },
@@ -139,53 +137,51 @@ const store = new Vuex.Store({
     {
       state.convrs = list
     },
-    /**
-     * 更新一条会话为已读
-     * @param {*} state
-     * @param {*} targetId
-     */
-    updateToRead_conversation (state, targetId)
+    update_chats (state, targets)
     {
-      const list = store.getters.convrs
-      const item = list.find(t => t.targetId === targetId)
-      if (item)
+      const chats = store.getters.chats
+      const newTargets = targets.filter(target => !chats[target.id])
+      newTargets.forEach(target => chats[target.id] = { target, messages: [] })
+      const msgGetters = newTargets.map(target =>
       {
-        item.unreadMessageCount = 0
-        mStorage.updateConversation(targetId, convr =>
-        {
-          convr.unreadMessageCount = 0
-        })
-        store.commit('update_convrs', list)
-      }
-    },
-    /**
-     * 更新currentChatTarget
-     * @param {*} state
-     * @param {{ id:string, type:string, target:{} }} obj
-     */
-    update_currentChatTarget (state, target)
-    {
-      caches.set(keys.currentChatTarget, target)
-      state.currentChatTarget = target
-      store.commit('update_currentChatMessages', null)
+        return mStorage.get(target.id)
+          .then(storage => ({ targetId: target.id, messages: storage }))
+      })
+      Promise.all(msgGetters).then(results =>
+      {
+        chats[results.targetId].messages = results.messages
+        store.commit('update_chats', chats)
 
-      if (target && target.targetId)
-      {
-        store.commit('updateToRead_conversation', target.targetId)
-      }
-    },
-    update_currentChatMessages (state, list)
-    {
-      state.currentChatMessages = list
+        results.forEach(result => mStorage.readConvr(result.targetId))
+        store.commit('update_convrs', store.getters.convrs)
+      })
+
+      caches.set(keys.chats, chats)
+      state.chats = chats
     }
+    // update_currentChatTarget (state, target)
+    // {
+    //   caches.set(keys.currentChatTarget, target)
+    //   state.currentChatTarget = target
+    //   store.commit('update_currentChatMessages', null)
+
+    //   if (target && target.targetId)
+    //   {
+    //     store.commit('updateToRead_conversation', target.targetId)
+    //   }
+    // },
+    // update_currentChatMessages (state, list)
+    // {
+    //   state.currentChatMessages = list
+    // }
   }
 })
 
 export default store
 
-export const login = function ({ name, password, region })
+export const login = function ({ mobile, password })
 {
-  return loginApp({ name, password, region }).then(myInfo =>
+  return ds.login({ mobile, password }).then(myInfo =>
   {
     mStorage = new MessageStorage(myInfo.id)
     store.commit('update_myInfo', myInfo)
@@ -194,7 +190,7 @@ export const login = function ({ name, password, region })
 } // 创建MessageStorage
 export const logout = function ()
 {
-  return logoutApp(store.getters.myInfo.telephone).then(() =>
+  return ds.logout().then(() =>
   {
     Object.keys(keys).forEach(key =>
     {
@@ -204,9 +200,8 @@ export const logout = function ()
 } // 清除缓存
 export const logoutState = function ()
 {
-  logouted()
   store.commit('update_lmw', null)
-  store.commit('update_currentChatTarget', null)
+  store.commit('update_chats', null)
   store.commit('update_myInfo', null)
   store.commit('update_friends', null)
   store.commit('update_groups', null)
@@ -214,40 +209,40 @@ export const logoutState = function ()
   mStorage = null
 } // 清除store
 
-export const updateLastMyWindow = function (name)
-{
-  store.commit('update_lmw', name)
-}
-export const updateCurrentChatTarget = function (target)
-{
-  store.commit('update_currentChatTarget', target)
-}
+export const updateLMW = (name) => store.commit('update_lmw', name)
 
-export const editNickName = function (nickName)
+export const updateChats = (targets) => store.commit('update_chats', targets)
+
+export const updateMyName = function (name)
 {
+  if (name === store.getters.myInfo.name) return
+
   const myInfo = store.getters.myInfo
-  const oldName = myInfo.name
-  myInfo.name = nickName
-  return changeUserDetailByApp({ telephone: myInfo.telephone, nickName: myInfo.name, fileContent: '', ex: '' }).then(() =>
+  return ds.updateUserName({ id: myInfo.id, name }).then(() =>
   {
+    myInfo.name = name
     store.commit('update_myInfo', myInfo)
-  }).catch(error =>
-  {
-    myInfo.name = oldName
-    throw error
   })
 }
-export const editPhoto = function (formData, ex)
+export const updateMyIco = function (ico)
 {
+  if (ico === store.getters.myInfo.ico) return
+
   const myInfo = store.getters.myInfo
-  return changeUserDetail2(formData, { telephone: myInfo.telephone, nickName: myInfo.name, ex })
-}
-export const editTelephone = function ({ telephone, activeCode, region })
-{
-  return updateUserName({ telephone, activeCode, region }).then(() =>
+  return ds.updateUserIco({ id: myInfo.id, ico }).then(() =>
   {
-    const myInfo = store.getters.myInfo
-    myInfo.telephone = telephone
+    myInfo.ico = ico
+    store.commit('update_myInfo', myInfo)
+  })
+}
+export const updateMyMobile = function ({ mobile, verifyCode })
+{
+  if (mobile === store.getters.myInfo.mobile) return
+
+  const myInfo = store.getters.myInfo
+  return ds.updateMobile({ id: myInfo.id, mobile, verifyCode }).then(() =>
+  {
+    myInfo.mobile = mobile
     store.commit('update_myInfo', myInfo)
   })
 }
@@ -255,17 +250,19 @@ export const editTelephone = function ({ telephone, activeCode, region })
 const appendFriend = function (friend)
 {
   const friends = store.getters.friends
-  if (friends.find(t => t.id === friend.id)) return
+  if (friends.find(t => t.id === friend.id)) return friend
   friends.push(friend)
   store.commit('update_friends', friends)
+  return friend
 }
 const appendGroup = function (group)
 {
   delete group.deleted
   const groups = store.getters.groups
-  if (groups.find(t => t.id === group.id)) return
+  if (groups.find(t => t.id === group.id)) return group
   groups.push(group)
   store.commit('update_groups', groups)
+  return group
 }
 const removeGroup = function (targetId, flag = true)
 {
@@ -283,22 +280,8 @@ const removeGroup = function (targetId, flag = true)
   store.commit('update_groups', groups)
 }
 
-export const addFriend = function (telephone)
-{
-  return addFriendByApp(telephone).then(friend =>
-  {
-    appendFriend(friend)
-    return friend
-  })
-}
-export const addGroup = function (ids)
-{
-  return addGroupByApp({ ids }).then(group =>
-  {
-    appendGroup(group)
-    return group
-  })
-}
+export const addFriend = (mobile) => ds.addFriend(mobile).then(friend => appendFriend(friend))
+export const addGroup = (name, membersId) => ds.addGroup({ name, membersId }).then(group => appendGroup(group))
 
 /**
  * 追加消息
@@ -423,9 +406,6 @@ export const exitGroup = function (targetId)
   {
     removeConversation(targetId)
     removeGroup(targetId, false)
-    // if (store.getters.currentChatTarget.targetId === targetId) {
-    //     store.commit('update_currentChatTarget', null)
-    // }
     return data
   })
 }
@@ -435,9 +415,6 @@ export const deleteGroup = function (targetId)
   {
     removeConversation(targetId)
     removeGroup(targetId)
-    // if (store.getters.currentChatTarget.targetId === targetId) {
-    //     store.commit('update_currentChatTarget', null)
-    // }
     return data
   })
 }

@@ -152,13 +152,13 @@ export default class DataSource
   {
     return this.serve.post('/user/name', { id, name })
   }
-  updateMobile ({ mobile, verifyCode })
+  updateMobile ({ id, mobile, verifyCode })
   {
-    return this.serve.post('/user/mobile', { mobile, verifyCode })
+    return this.serve.post('/user/mobile', { id, mobile, verifyCode })
   }
-  updatePassword ({ oldPwd, newPwd })
+  updatePassword ({ id, oldPwd, newPwd })
   {
-    return this.serve.post('/user/password', { oldPwd, newPwd })
+    return this.serve.post('/user/password', { id, oldPwd, newPwd })
   }
   updatePasswordByMobile ({ mobile, verifyCode, newPwd })
   {
