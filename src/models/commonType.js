@@ -7,6 +7,8 @@ export const MessageType = {
   typing: '5',
   read: '6',
   unknown: '7',
+  resetGroupName: '8',
+  groupMsgs: '20', // 群的批量消息
   0: 'sys',
   1: 'text',
   2: 'image',
@@ -14,7 +16,15 @@ export const MessageType = {
   4: 'file',
   5: 'typing',
   6: 'read',
-  7: 'unknown'
+  7: 'unknown',
+  8: 'resetGroupName',
+  20: 'groupMsgs'
+}
+export const TargetType = {
+  friend: 1,
+  group: 2,
+  1: 'friend',
+  2: 'group'
 }
 
 export default {

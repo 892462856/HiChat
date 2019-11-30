@@ -32,7 +32,7 @@ const GroupMember = function ({ groupId, userId, userName, isOwner, isAdmin })
   this.isAdmin = isAdmin || false
 }
 
-const Message = function ({ id, cid, type, senderId, targetId, targetType, content, callList, sentTime })
+const Message = function ({ id, cid, type, senderId, targetId, targetType, content, callList, sentTime, status })
 {
   this.id = id
   this.cid = cid || uuid()
@@ -45,6 +45,7 @@ const Message = function ({ id, cid, type, senderId, targetId, targetType, conte
   // this.readTime = readTime
   this.sentTime = sentTime
   // this.receiveTime = receiveTime
+  this.status = 0 // 0：发送中，-1：发送失败，1：发送成功 (后端没有这个字段)
 }
 
 const Convr = function ({
@@ -69,6 +70,7 @@ const Convr = function ({
 
 const GetContentSketchByMessageContent = function (msg)
 {
+  // if(msg.status===-1) str='[发送失败]'
   let str = ''
   if ((msg.callList || []).length > 0)
   {

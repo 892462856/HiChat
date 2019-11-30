@@ -87,6 +87,7 @@ class MessageStorage
 {
   constructor(userId)
   {
+    if (!userId) return null
     this._cache = localforage
     this._userId = userId
     this._key = `msg_${userId}`
@@ -119,6 +120,9 @@ class MessageStorage
   {
     return this.get(msg.targetId).then((storage) =>
     {
+      const index = storage.findIndex(t => t.cid === msg.cid)
+      if (index > -1) storage.splice(index, 1)
+
       storage.push(msg)
       const convr = MessageToConvr(msg, read)
       return Promise.all(this.save(storage, msg.targetId), this._cStorage.addItem(convr))

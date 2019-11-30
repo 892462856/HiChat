@@ -1,7 +1,10 @@
 import Vue from 'vue'
 import Vuex from 'vuex'
 import DataSource from '@/datasources/database'
+import Messager from '@/datasources/messager'
 import MessageStorage from '@/storage/messageStorage'
+import models from '@/models'
+import { MessageType, TargetType } from '@/models/commonType'
 import CommonCacheAccessor from '@/assets/js/commonCacheAccessor'
 
 Vue.use(Vuex)
@@ -26,6 +29,7 @@ const commonErrorMonitor = function (type, error)
   popup.error({ message: error.message || error })
 }
 const ds = new DataSource(commonErrorMonitor)
+const msger = new Messager(caches.get(keys.myInfo) ? caches.get(keys.myInfo).id : null)
 let mStorage = new MessageStorage(caches.get(keys.myInfo) ? caches.get(keys.myInfo).id : 'xxxx')
 const caches = new CommonCacheAccessor(window.sessionStorage)
 
@@ -285,20 +289,24 @@ export const addGroup = (name, membersId) => ds.addGroup({ name, membersId }).th
 
 /**
  * 追加消息
- * @param {*} msg
+ * @param {*} message
+ * @param {[]} messages unread messages if group
  */
-const appendToCurrentChatMessages = function (msg)
+const appendMessageToChat = function (message, messages)
 {
-  if (!msg) return
-  const list = store.getters.currentChatMessages
-  list.push(msg)
-  store.commit('update_currentChatMessages', list)
+  if (!message) return
+  const target = store.getters.chats[message.targetId]
+  if (!target) return
+
+  if (messages && messages.length > 0)
+  {
+    target.messages = target.messages.concat(messages)
+  }
+  target.messages.push(message)
+  store.commit('update_chats', store.getters.chats)
 }
-/**
- * 更新会话列表
- * @param {*} convr
- */
-const updateConversations = function (convr)
+
+const updateConvrs = function (convr)
 {
   if (!convr) return
   let list = store.getters.convrs
@@ -306,44 +314,32 @@ const updateConversations = function (convr)
   list.unshift(convr)
   store.commit('update_convrs', list)
 }
-export const removeConversation = function (targetId)
+export const removeConvr = function (targetId)
 {
-  return mStorage.removeConversation(targetId).then(() =>
+  return mStorage.removeConvr(targetId).then(() =>
   {
     store.commit('update_convrs', store.getters.convrs.filter(t => t.targetId !== targetId))
-    if (targetId === store.getters.currentChatTarget.targetId)
+    const chats = store.getters.chats
+    if (chats[targetId])
     {
-      store.commit('update_currentChatMessages', null)
+      chats[targetId].message = []
+      store.commit('update_chats', chats)
     }
   })
 }
 
-const messageListener = function ({ message, convr, senderUser, target })
+const messageListener = function ({ message, convr, messages })
 {
-  if (message && store.getters.currentChatTarget && store.getters.currentChatTarget.targetId === message.targetId)
-  {
-    appendToCurrentChatMessages(message)
-  } // 如果是当前聊天窗口的消息，则追加到currentChatMessages
-  if (convr)
-  {
-    updateConversations(convr)
-  }
+  appendMessageToChat(message, messages) // 如果是当前聊天窗口的消息，则追加到currentChatMessages
+  if (convr) updateConvrs(convr)
 
-  if (message && message.content && message.content.extra === 'AddFriend')
-  {
-    appendFriend(senderUser)
-  } // 加好友
-  if ((message && message.content && message.content.extra === 'AddGroup') || (message && message.messageType === 'GroupNotificationMessage' && (['Create', 'Add'].includes(message.content.operation))))
-  {
-    appendGroup(target)
-  } // 加群
-  if (message && message.messageType === 'GroupNotificationMessage' && message.content.operation === 'Rename')
+  if (message && message.type === 'resetGroupName')
   {
     const groups = store.getters.groups
     const group = groups.find(t => t.targetId === message.targetId)
     if (group)
     {
-      group.name = message.content.data.targetGroupName
+      group.name = message.content.groupName
       store.commit('update_groups', groups)
     }
   } // 修改群名称
@@ -364,83 +360,99 @@ const messageReceiver = {
 
 export const LinkCommunicationAndListening = function ()
 {
-  return LinkCommunicationAndListeningForRong(store.getters.myInfo.token, (message) =>
-  {
-    // console.log(message)
-    const read = !!store.getters.currentChatTarget.targetId && store.getters.currentChatTarget.targetId === message.targetId
-    const _messageReceiver = messageReceiver[message.messageType] || messageReceiver.default
-    _messageReceiver(message, read).then(({ message: msg, convr, senderUser, target }) =>
+  return msger(store.getters.myInfo.id
+    , (status) => store.commit('update_commStatus', status)
+    , (message) =>
     {
-      messageListener({ message: msg, convr, senderUser, target })
+      const read = !!store.getters.chats[message.targetId]
+      const _messageReceiver = messageReceiver[message.type] || messageReceiver.default
+      _messageReceiver(message, read).then(({ message: msg, convr }) =>
+      {
+        messageListener({ message: msg, convr })
+      })
     })
-  }, (status) =>
-  {
-    store.commit('update_commStatus', status)
-  })
 }
 
-const sendMessage = function (sendHander)
+const sendMessage = function (type)
 {
   return function (msgObj)
   {
-    return sendHander({
+    const msg = new models.Message({
       ...msgObj,
-      sender: store.getters.myInfo,
-      target: store.getters.currentChatTarget
-    }).then(({ message, convr, senderUser, target }) =>
-    {
-      console.log(message)
-      messageListener({ message, convr, senderUser, target })
+      type,
+      sendTime: new Date(),
+      senderId: store.getters.myInfo,
+      targetType: store.getters.friends.find(f => f.id === msgObj.targetId) ? TargetType.friend : TargetType.group,
+      status: 0
     })
+    mStorage.saveItem(msg, true) // add store
+
+    return msger.send(msg)
+      .catch(() =>
+      {
+        msg.status = -1
+        return mStorage.saveItem(msg, true)
+      })
+      .then(() =>
+      {
+        delete msg.status
+        return mStorage.saveItem(msg, true)
+      }).
+      .then(({ message, convr }) =>
+      {
+        console.log(message)
+        messageListener({ message, convr })
+      })
   }
 }
 
-export const sendText = sendMessage((obj) => mStorage.sendText(obj))
-export const sendEncryptText = sendMessage((obj) => mStorage.sendEncryptText(obj))
-export const sendImage = sendMessage((obj) => mStorage.sendImage(obj))
-export const sendFile = sendMessage((obj) => mStorage.sendFile(obj))
+export const sendText = sendMessage(MessageType.text)
+export const sendImage = sendMessage(MessageType.image)
+export const sendVideo = sendMessage(MessageType.video)
+export const sendFile = sendMessage(MessageType.file)
 
-export const exitGroup = function (targetId)
+export const exitGroup = function (groupId)
 {
-  return exitGroupByApp(targetId).then(data =>
+  return ds.exitGroup(groupId, store.getters.myInfo.id).then(group =>
   {
-    removeConversation(targetId)
-    removeGroup(targetId, false)
-    return data
+    removeConvr(groupId)
+    removeGroup(groupId, false)
+    return group
   })
 }
-export const deleteGroup = function (targetId)
+export const deleteGroup = function (groupId)
 {
-  return deleteGroupByApp(targetId).then(data =>
+  return ds.deleteGroup(groupId).then(group =>
   {
-    removeConversation(targetId)
-    removeGroup(targetId)
-    return data
+    removeConvr(groupId)
+    removeGroup(groupId)
+    return group
   })
 }
 export const addToBlacklist = function (id)
 {
   const friends = store.getters.friends
-  const friend = friends.find(t => t.id === id)
-  return addBlckUser([id]).then(d =>
+  return ds.moveToBlacklist(id).then(user =>
   {
-    removeConversation(friend.targetId)
-    friends.splice(friends.indexOf(friend), 1)
+    removeConvr(id)
+    friends.splice(friends.indexOf(friends.find(t => t.id === id)), 1)
     store.commit('update_friends', friends)
-    if (store.getters.currentChatTarget.targetId === friend.targetId)
+    const chats = store.getters.chats
+    if (chats[id])
     {
-      store.commit('update_currentChatTarget', null)
+      delete chats[id]
+      store.commit('update_chats', chats)
     }
-    return d
+    return user
   })
 }
-export const removeFromBlacklist = function (item)
+export const removeFromBlacklist = function (id)
 {
-  return delBlckUser([item.id]).then(d =>
+  return ds.moveOutBlacklist(id).then(user =>
   {
     const friends = store.getters.friends
-    friends.unshift({ ...item })
+    friends.unshift(user)
     store.commit('update_friends', friends)
-    return d
+    return user
   })
 }

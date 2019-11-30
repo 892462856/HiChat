@@ -75,6 +75,7 @@ export class Messager
 {
   constructor(identify, onStatusChange, receiver)
   {
+    if (!identify) return null
     connect(identify, (status, socket) =>
     {
       this.status = { code: status, str: statusStrings[status] }
@@ -84,11 +85,13 @@ export class Messager
   }
   send (message)
   {
-    return PromiseAfterConnected(this.status, (resolve) =>
+    return PromiseAfterConnected(this.status, (resolve, reject) =>
     {
       const result = this.socket.send(message)
       console.log(result)
-      resolve()
+      // 要接收一条消息，才知道是否成功
+      resolve(message)
+      reject(message)
     })
   }
   close ()
