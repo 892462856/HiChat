@@ -67,26 +67,31 @@ const Convr = function ({
 }
 
 
-const GetContentSketchByMessageContent = function (type, content)
+const GetContentSketchByMessageContent = function (msg)
 {
-  switch (type)
+  let str = ''
+  if ((msg.callList || []).length > 0)
+  {
+    str = '[call你]'
+  }
+  switch (msg.type)
   {
     case 'text':
-      return content.content
+      return `${str}${msg.content.content}`
     case 'image':
-      return '[图片]'
+      return `${str}[图片]`
     case 'video':
-      return '[视频]'
+      return `${str}[视频]`
     case 'file':
-      return '[文件]'
+      return `${str}[文件]`
     case 'voice':
-      return '[语音]'
+      return `${str}[语音]`
     case 'HQVoice':
-      return '[语音]'
+      return `${str}[图片]`
     case 'sys':
-      return content.message
+      return `${str}${msg.content.content}`
     default:
-      return '……'
+      return `${str}……`
   }
 }
 
@@ -104,7 +109,7 @@ const MessageToConvr = function (msg, read = false)
       cid: msg.cid,
       type: msg.type,
       callList: msg.callList,
-      content: GetContentSketchByMessageContent(msg.type, msg.content)
+      content: GetContentSketchByMessageContent(msg)
     }
   })
 }

@@ -1,19 +1,21 @@
 import Vue from 'vue'
 import Vuex from 'vuex'
-import DataSource from '@/datasources/database'
-import MessageStorage from '@/storage/messageStorage'
-import CommonCacheAccessor from '@/assets/js/commonCacheAccessor'
+import setCommonErrorMonitor, { delBlckUser, addBlckUser, deleteGroup as deleteGroupByApp, exitGroup as exitGroupByApp, updateUserName, changeUserDetail2, changeUserDetail as changeUserDetailByApp, getGroups, getFriends, addFriend as addFriendByApp, addGroup as addGroupByApp, LinkCommunicationAndListening as LinkCommunicationAndListeningForRong, login as loginApp, logout as logoutApp, logouted } from '@/cacheAccessor'
+import MessageStorage from '@/cacheAccessor/messageStorage'
+import CommonCacheAccessor from '@/cacheAccessor/CommonCacheAccessor'
+
+export { setGroupCast, getBlackUsers, setBlackUserPwd, changeTelMessage, forgetPWDMessage, saveForgetPWD, changPwd, updateGroupName, getGroupMembers, addGroupMember, removeGroupMember, updateGroupUserName, uploadFile, searchUser, register, registerVerifyCode } from '@/cacheAccessor'
+export { emojiApi } from '@/cacheAccessor'
 
 Vue.use(Vuex)
 
 const keys = {
   myInfo: 'myInfo',
-  lmw: 'lmw',
-  // currentChatTarget: 'currentChatTarget',
+  lastMyWindow: 'lastMyWindow',
+  currentChatTarget: 'currentChatTarget',
   groups: 'groups',
   friends: 'friends',
-  users: 'users',
-  chats: 'chats'
+  users: 'users'
 }
 
 const commonErrorMonitor = function (type, error)
@@ -26,118 +28,111 @@ const commonErrorMonitor = function (type, error)
   }
   popup.error({ message: error.message || error })
 }
-const ds = new DataSource(commonErrorMonitor)
-let mStorage = new MessageStorage(caches.get(keys.myInfo) ? caches.get(keys.myInfo).id : 'xxxx')
-const caches = new CommonCacheAccessor(window.sessionStorage)
+setCommonErrorMonitor(commonErrorMonitor)
+
+const cca = new CommonCacheAccessor(window.sessionStorage)
+let mStorage = new MessageStorage(cca.get(keys.myInfo) ? cca.get(keys.myInfo).id : 'xxxx')
 
 const store = new Vuex.Store({
   state: {
-    commStatus: {}, // {code,str}
-    lmw: null, // lmw='',
+    communicationStatus: 0, // rong链接状态
+    lastMyWindow: null, // '',
     myInfo: null, // 我(登陆者)的信息
     friends: null, // [],
     groups: null, // [],
-    convrs: null, // [], // 会话列表
-    chats: {} // {targetId:{target,messages},......}  当前聊天对象(friend/group)===当前聊天窗口
-    // currentChatTarget: null, // 当前聊天对象(friend/group)===当前聊天窗口
-    // currentChatMessages: null // []
+    conversations: null, // [], // 会话列表
+    currentChatTarget: null, // 当前聊天对象(friend/group)===当前聊天窗口
+    currentChatMessages: null // []
   },
   getters: {
-    commStatus: state => state.commStatus, // 通讯状态
-    lmw: state =>
+    communicationStatus: state => state.communicationStatus, // 通讯状态
+    lastMyWindow: state =>
     {
-      if (state.lmw === null && store.getters.myInfo.id)
+      if (state.lastMyWindow === null && store.getters.myInfo.id)
       {
-        store.commit('update_lmw', caches.get(keys.lmw))
+        store.commit('update_lastMyWindow', cca.get(keys.lastMyWindow))
       }
-      return state.lmw
+      return state.lastMyWindow
     },
     myInfo: state =>
     {
+      // debugger
       if (state.myInfo === null)
       {
-        store.commit('update_myInfo', caches.get(keys.myInfo) || {})
+        store.commit('update_myInfo', cca.get(keys.myInfo) || {})
       }
       return state.myInfo || {}
     },
     friends: state =>
     {
-      if (!state.friends && store.getters.myInfo.id)
+      if (!state.friends && store.getters.myInfo && store.getters.myInfo.id)
       {
-        caches.get(keys.friends, ds.getFriends).then(list => store.commit('update_friends', list))
+        cca.get(keys.friends, getFriends).then(list => store.commit('update_friends', list))
       }
       return state.friends || []
     },
     groups: state =>
     {
-      if (!state.groups && store.getters.myInfo.id)
+      if (!state.groups && store.getters.myInfo && store.getters.myInfo.id)
       {
-        caches.get(keys.groups, ds.getGroups).then(list => store.commit('update_groups', list))
+        cca.get(keys.groups, getGroups).then(list => store.commit('update_groups', list))
       }
       return state.groups || []
     },
-    convrs: state =>
+    conversations: state =>
     {
-      if (!state.convrs && store.getters.myInfo.id)
+      if (!state.conversations && store.getters.myInfo && store.getters.myInfo.id)
       {
-        mStorage.getConvrs().then(list => store.commit('update_convrs', list))
+        mStorage.getConversations().then(list => store.commit('update_conversations', list))
       }
-      return state.convrs || []
+      return state.conversations || []
     },
-    chats: state =>
+    currentChatTarget: state =>
     {
-      if (state.chats === null && store.getters.myInfo.id)
+      if (state.currentChatTarget === null && store.getters.myInfo && store.getters.myInfo.id)
       {
-        store.commit('update_chats', caches.get(keys.chats))
+        store.commit('update_currentChatTarget', cca.get(keys.currentChatTarget))
       }
-      return state.chats || {}
+      return state.currentChatTarget || {}
     },
-    // currentChatTarget: state =>
-    // {
-    //   if (state.currentChatTarget === null  && store.getters.myInfo.id)
-    //   {
-    //     store.commit('update_currentChatTarget', caches.get(keys.currentChatTarget))
-    //   }
-    //   return state.currentChatTarget || {}
-    // },
-    // currentChatMessages: state =>
-    // {
-    //   if (state.currentChatMessages === null && store.getters.myInfo.id)
-    //   {
-    //     mStorage.get(store.getters.currentChatTarget.targetId).then(list => store.commit('update_currentChatMessages', list))
-    //   }
-    //   return state.currentChatMessages || []
-    // }
+    currentChatMessages: state =>
+    {
+      if (state.currentChatMessages === null && store.getters.myInfo && store.getters.myInfo.id)
+      {
+        mStorage.get(store.getters.currentChatTarget.targetId).then(list => store.commit('update_currentChatMessages', list))
+      }
+      return state.currentChatMessages || []
+    }
   },
   mutations: {
-    update_commStatus (state, status)
+    update_communicationStatus (state, status)
     {
-      state.commStatus = status
+      state.communicationStatus = status
     },
-    update_lmw (state, name)
+    update_lastMyWindow (state, name)
     {
-      caches.set(keys.lmw, name)
-      state.lmw = name
+      cca.set(keys.lastMyWindow, name)
+      state.lastMyWindow = name
     },
     update_myInfo (state, myInfo)
     {
       // debugger
-      caches.set(keys.myInfo, myInfo)
+      cca.set(keys.myInfo, myInfo)
       state.myInfo = myInfo
     },
     update_friends (state, list)
     {
-      caches.set(keys.friends, list)
+      cca.set(keys.friends, list)
       state.friends = list
     },
     update_groups (state, list)
     {
-      caches.set(keys.groups, list)
+      cca.set(keys.groups, list)
       state.groups = list
     },
-    update_convrs (state, list)
+    update_conversations (state, list)
     {
-      state.convrs = list
+      state.conversations = list
     },
     /**
      * 更新一条会话为已读
@@ -146,7 +141,7 @@ const store = new Vuex.Store({
      */
     updateToRead_conversation (state, targetId)
     {
-      const list = store.getters.convrs
+      const list = store.getters.conversations
       const item = list.find(t => t.targetId === targetId)
       if (item)
       {
@@ -155,7 +150,7 @@ const store = new Vuex.Store({
         {
           convr.unreadMessageCount = 0
         })
-        store.commit('update_convrs', list)
+        store.commit('update_conversations', list)
       }
     },
     /**
@@ -165,7 +160,7 @@ const store = new Vuex.Store({
      */
     update_currentChatTarget (state, target)
     {
-      caches.set(keys.currentChatTarget, target)
+      cca.set(keys.currentChatTarget, target)
       state.currentChatTarget = target
       store.commit('update_currentChatMessages', null)
 
@@ -198,25 +193,25 @@ export const logout = function ()
   {
     Object.keys(keys).forEach(key =>
     {
-      caches.set(keys[key])
+      cca.set(keys[key])
     })
   })
 } // 清除缓存
 export const logoutState = function ()
 {
   logouted()
-  store.commit('update_lmw', null)
+  store.commit('update_lastMyWindow', null)
   store.commit('update_currentChatTarget', null)
   store.commit('update_myInfo', null)
   store.commit('update_friends', null)
   store.commit('update_groups', null)
-  store.commit('update_convrs', null)
+  store.commit('update_conversations', null)
   mStorage = null
 } // 清除store
 
 export const updateLastMyWindow = function (name)
 {
-  store.commit('update_lmw', name)
+  store.commit('update_lastMyWindow', name)
 }
 export const updateCurrentChatTarget = function (target)
 {
@@ -318,16 +313,16 @@ const appendToCurrentChatMessages = function (msg)
 const updateConversations = function (convr)
 {
   if (!convr) return
-  let list = store.getters.convrs
+  let list = store.getters.conversations
   list = list.filter(t => t.targetId !== convr.targetId)
   list.unshift(convr)
-  store.commit('update_convrs', list)
+  store.commit('update_conversations', list)
 }
 export const removeConversation = function (targetId)
 {
   return mStorage.removeConversation(targetId).then(() =>
   {
-    store.commit('update_convrs', store.getters.convrs.filter(t => t.targetId !== targetId))
+    store.commit('update_conversations', store.getters.conversations.filter(t => t.targetId !== targetId))
     if (targetId === store.getters.currentChatTarget.targetId)
     {
       store.commit('update_currentChatMessages', null)
@@ -392,7 +387,7 @@ export const LinkCommunicationAndListening = function ()
     })
   }, (status) =>
   {
-    store.commit('update_commStatus', status)
+    store.commit('update_communicationStatus', status)
   })
 }
 

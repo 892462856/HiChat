@@ -1,4 +1,5 @@
 import localforage from 'localforage'
+// import messager from '../datasources/message'
 import { MessageToConvr } from '@/models'
 
 localforage.config({
@@ -126,7 +127,7 @@ class MessageStorage
           return { message: msg, convr: convr_ }
         })
     })
-  }
+  } // 可以未发送完 先到列表!!!
   saveItems (msgs, read = false)
   {
     const msg = msgs.shift()
@@ -140,9 +141,9 @@ class MessageStorage
           return this._cStorage.updateItem(msg.targetId, convr =>
           {
             convr.unreadCount = convr.unreadCount + msgs.length
-          }).then(convr => ({ message: msgWithConvr.message, convr }))
+          }).then(convr => ({ message: msgWithConvr.message, convr, messages: msgs }))
         }
-        return msgWithConvr
+        return { message: msgWithConvr.message, convr: msgWithConvr.convr, messages: msgs }
       })
   }
   removeItem (msg)
@@ -161,6 +162,13 @@ class MessageStorage
   updateConvr (targetId, updater)
   {
     return this._cStorage.updateItem(targetId, updater)
+  }
+  readConvr (targetId)
+  {
+    return this._cStorage.updateItem(targetId, convr =>
+    {
+      convr.unreadCount = 0
+    })
   }
   removeConvr (targetId)
   {
