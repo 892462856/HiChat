@@ -36,8 +36,8 @@ function PromiseAfterConnected (execute)
 
 const connect = function (identify, onStatusChange, receiver)
 {
-  onStatusChange(0)
   const socket = new WebSocket(`ws://172.16.0.13:8001/${identify}`)
+  onStatusChange(0, socket)
 
   socket.addEventListener('message', function (event)    
   {
@@ -47,7 +47,7 @@ const connect = function (identify, onStatusChange, receiver)
 
   socket.addEventListener('open', function ()    
   {
-    onStatusChange(1, socket)
+    onStatusChange(1)
     console.log(`open:${identify}`)
     // socket.send(`open:${identify}`)      
   })
