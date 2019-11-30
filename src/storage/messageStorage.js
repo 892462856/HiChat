@@ -145,9 +145,9 @@ class MessageStorage
           return this._cStorage.updateItem(msg.targetId, convr =>
           {
             convr.unreadCount = convr.unreadCount + msgs.length
-          }).then(convr => ({ message: msgWithConvr.message, convr, messages: msgs }))
+          }).then(convr => ({ messages: [msgWithConvr.message, ...msgs], convr }))
         }
-        return { message: msgWithConvr.message, convr: msgWithConvr.convr, messages: msgs }
+        return { messages: [msgWithConvr.message, ...msgs], convr: msgWithConvr.convr }
       })
   }
   removeItem (msg)

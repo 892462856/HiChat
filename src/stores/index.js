@@ -287,25 +287,6 @@ const removeGroup = function (targetId, flag = true)
 export const addFriend = (mobile) => ds.addFriend(mobile).then(friend => appendFriend(friend))
 export const addGroup = (name, membersId) => ds.addGroup({ name, membersId }).then(group => appendGroup(group))
 
-/**
- * 追加消息
- * @param {*} message
- * @param {[]} messages unread messages if group
- */
-const appendMessageToChat = function (message, messages)
-{
-  if (!message) return
-  const target = store.getters.chats[message.targetId]
-  if (!target) return
-
-  if (messages && messages.length > 0)
-  {
-    target.messages = target.messages.concat(messages)
-  }
-  target.messages.push(message)
-  store.commit('update_chats', store.getters.chats)
-}
-
 const updateConvrs = function (convr)
 {
   if (!convr) return
@@ -328,34 +309,66 @@ export const removeConvr = function (targetId)
   })
 }
 
-const messageListener = function ({ message, convr, messages })
+/**
+ * 追加消息
+ * @param {[]} messages
+ */
+const appendMessagesToChat = function (messages)
 {
-  appendMessageToChat(message, messages) // 如果是当前聊天窗口的消息，则追加到currentChatMessages
-  if (convr) updateConvrs(convr)
+  if (!messages || messages.length === 0) return
+  const target = store.getters.chats[messages[0].targetId]
+  if (!target) return
 
-  if (message && message.type === 'resetGroupName')
-  {
-    const groups = store.getters.groups
-    const group = groups.find(t => t.targetId === message.targetId)
-    if (group)
-    {
-      group.name = message.content.groupName
-      store.commit('update_groups', groups)
-    }
-  } // 修改群名称
+  target.messages = target.messages.concat(messages)
+  store.commit('update_chats', store.getters.chats)
 }
 
-const messageReceiver = {
-  TextMessage: (msg, read) => mStorage.receiveText(msg, read),
-  ImageMessage: (msg, read) => mStorage.receiveImage(msg, read),
-  FileMessage: (msg, read) => mStorage.receiveFile(msg, read),
-  HQVoiceMessage: (msg, read) => mStorage.receiveHQVoice(msg, read),
-  RichContentMessage: (msg, read) => mStorage.receiveRichContent(msg, read),
-  TypingStatusMessage: (msg, read) => mStorage.receiveTypingStatus(msg, read),
-  ReadReceiptMessage: (msg, read) => mStorage.receiveReadReceipt(msg, read),
-  GroupNotificationMessage: (msg, read) => mStorage.receiveGroupNotification(msg, read),
-  UnknownMessage: (msg, read) => mStorage.receiveUnknown(msg, read),
-  default: (msg, read) => mStorage.receiveOther(msg, read)
+const saveMessage = function (msg, read)
+{
+  return mStorage.saveItem(msg, read).then(({ message, convr }) =>
+  {
+    appendMessagesToChat([message]) // 如果是当前聊天窗口的消息，则追加到currentChatMessages
+    if (convr) updateConvrs(convr)
+    return { message, convr }
+  })
+}
+
+const messageHandlers = {
+  [MessageType.text]: message => message,
+  [MessageType.image]: message => message,
+  [MessageType.file]: message => message,
+  [MessageType.video]: message => message,
+  [MessageType.voice]: message => message,
+  [MessageType.sys]: message => message,
+  [MessageType.groupMsgs]: (msg) =>
+  {
+    return msg
+  },
+  [MessageType.renameGroup]: (msg) =>
+  {
+    if (('status' in msg) && msg.status !== 2) return
+
+    const groups = store.getters.groups
+    const group = groups.find(t => t.id === msg.targetId)
+    if (group)
+    {
+      group.name = msg.content.groupName
+      store.commit('update_groups', groups)
+    }
+    return msg
+  }, // 修改群名称
+  default: message => message
+}
+
+const messageHandler = function (message, read)
+{
+  let result = null
+  if (message.type !== MessageType.groupMsgs)
+  {
+    saveMessage(message, read)
+  }
+  const _messageHandlers = messageHandlers[message.type] || messageHandlers.default
+  return _messageHandlers(message).then(message => { })
 }
 
 export const LinkCommunicationAndListening = function ()
@@ -365,11 +378,7 @@ export const LinkCommunicationAndListening = function ()
     , (message) =>
     {
       const read = !!store.getters.chats[message.targetId]
-      const _messageReceiver = messageReceiver[message.type] || messageReceiver.default
-      _messageReceiver(message, read).then(({ message: msg, convr }) =>
-      {
-        messageListener({ message: msg, convr })
-      })
+      return messageHandler(message, read)
     })
 }
 
@@ -385,24 +394,18 @@ const sendMessage = function (type)
       targetType: store.getters.friends.find(f => f.id === msgObj.targetId) ? TargetType.friend : TargetType.group,
       status: 0
     })
-    mStorage.saveItem(msg, true) // add store
 
-    return msger.send(msg)
-      .catch(() =>
+    const _messageHandler = messageHandler[msg.type] || messageHandler.default
+    return _messageHandler(msg, true)
+      .then(message => saveMessage(message, true))
+      .then(({ message, convr }) => msger.send(message)) // send befor | send after
+      .catch((message) =>
       {
-        msg.status = -1
-        return mStorage.saveItem(msg, true)
+        message.status = -1
+        return _messageHandler(message, true)
       })
-      .then(() =>
-      {
-        delete msg.status
-        return mStorage.saveItem(msg, true)
-      }).
-      .then(({ message, convr }) =>
-      {
-        console.log(message)
-        messageListener({ message, convr })
-      })
+      .then(message => _messageHandler(message, true))
+      .then(message => saveMessage(message, true))
   }
 }
 
