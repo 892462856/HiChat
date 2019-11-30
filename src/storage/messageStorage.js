@@ -154,18 +154,18 @@ class MessageStorage
     })
   }
 
-  getConversations ()
+  getConvrs ()
   {
     return this._cStorage.get()
   }
-  updateConversation (targetId, updater)
+  updateConvr (targetId, updater)
   {
-    this._cStorage.updateItem(targetId, updater)
+    return this._cStorage.updateItem(targetId, updater)
   }
-  removeConversation (targetId)
+  removeConvr (targetId)
   {
-    this.remove(targetId) // 先删除消息
-    return this._cStorage.removeItem(targetId) // 删除会话
+    return this.remove(targetId) // 先删除消息
+      .then(() => this._cStorage.removeItem(targetId)) // 删除会话
   }
 }
 
