@@ -1,5 +1,6 @@
 import localforage from 'localforage'
-import { MessageToConvr } from '@/models'
+import messager from '@/datasources/message'
+import { MessageConvertToConversation } from '@/models'
 
 localforage.config({
   // driver: localforage.WEBSQL, // 使用 WebSQL；也可以使用 setDriver()
@@ -19,7 +20,7 @@ class ConvrStorage
   }
   get ()
   {
-    return this._cache.getItem(this._key).then(list => list || [])
+    return this._cache.getItem(this._key)
   }
   remove ()
   {
@@ -84,74 +85,134 @@ class ConvrStorage
 
 class MessageStorage 
 {
-  constructor(userId)
+  constructor(userId, onStatusChange, receiver)
   {
     this._cache = localforage
     this._userId = userId
     this._key = `msg_${userId}`
     this._cStorage = new ConvrStorage(userId) // 会话是根据消息来的
+    this._msger = new messager(userId, (msg) =>
+    {
+      console.log(msg)
+    })
   }
-  _fullKey (targetId)
+  _getFullKey (targetId)
   {
     return `${this._key}_${targetId}`
   }
   get (targetId)
   {
-    return this._cache.getItem(this._fullKey(targetId)).then(list => list || [])
+    const storage = JSON.parse(this._cache.getItem(this._getFullKey(targetId))) || []
+    return Promise.resolve(storage)
   }
   remove (targetId)
   {
     return this.get(targetId).then((storage) =>
     {
-      return this._cache.removeItem(this._fullKey(targetId)).then(() => storage)
+      this._cache.removeItem(this._getFullKey(targetId))
+      return storage
     })
   }
   save (storage, targetId)
   {
-    return this._cache.setItem(this._fullKey(targetId), storage)
+    this._cache.setItem(this._getFullKey(targetId), JSON.stringify(storage))
+    return Promise.resolve()
   }
   /**
    * 保存+更新会话。return后{message消息,convr会话}
    * @param {*} msg
    */
-  saveItem (msg, read = true)
+  _saveItem (msg, read = true)
   {
     return this.get(msg.targetId).then((storage) =>
     {
-      storage.push(msg)
-      const convr = MessageToConvr(msg, read)
-      return Promise.all(this.save(storage, msg.targetId), this._cStorage.addItem(convr))
-        .then(([, convr_]) =>
-        {
-          return { message: msg, convr: convr_ }
-        })
-    })
-  }
-  saveItems (msgs, read = false)
-  {
-    const msg = msgs.shift()
-    return this.get(msg.targetId)
-      .then((storage) => this.save(storage.concat(msgs), msg.targetId))
-      .then(() => this.saveItem(msg, read))
-      .then(msgWithConvr =>
+      const senderUser = msg.senderUser
+      const target = msg.target
+      delete msg.senderUser
+      delete msg.target
+      if (senderUser)
       {
-        if (!read)
-        {
-          return this._cStorage.updateItem(msg.targetId, convr =>
-          {
-            convr.unreadCount = convr.unreadCount + msgs.length
-          }).then(convr => ({ message: msgWithConvr.message, convr }))
-        }
-        return msgWithConvr
-      })
+        msg.senderUserName = senderUser.name
+        msg.senderUserIco = senderUser.ico
+      }
+
+      storage.push(msg)
+      this.save(storage, msg.targetId)
+
+      const convr = MessageConvertToConversation(msg, read)
+      this._cStorage.addItem(convr)
+
+      return { message: msg, convr, senderUser, target }
+    })
   }
   removeItem (msg)
   {
     return this.get(msg.targetId).then((storage) =>
     {
-      storage = storage.filter(t => t.id !== msg.id)
-      return this.save(storage, msg.targetId).then(() => msg)
+      storage = storage.filter(t => t.messageUId !== msg.messageUId)
+      this.save(storage, msg.targetId)
+      return msg
     })
+  }
+
+  _onSent (msg)
+  {
+    return this._saveItem(msg)
+  }
+  sendText ({ content, extra, sender, target })
+  {
+    return this._msger(target).sendText({ content, extra }).then((message) =>
+    {
+      message.senderUser = sender
+      message.target = target
+      return this._onSent(message)
+    })
+  }
+  sendImage ({ content, imageUri, sender, target })
+  {
+    return this._msger(target).sendImage({ content, imageUri }).then((message) =>
+    {
+      message.senderUser = sender
+      message.target = target
+      return this._onSent(message)
+    })
+  }
+  sendFile ({ name, fileUrl, extra, type, size, sender, target })
+  {
+    return this._msger(target).sendFile({ name, fileUrl, extra, type, size }).then((message) =>
+    {
+      message.senderUser = sender
+      message.target = target
+      return this._onSent(message)
+    })
+  }
+  _onReceived (msg, read)
+  {
+    return this._saveItem(msg, read)
+  }
+  receiveText (msg, read)
+  {
+    return this._onReceived(msg, read)
+  }
+  receiveImage (msg, read)
+  {
+    return this._onReceived(msg, read)
+  }
+  receiveFile (msg, read)
+  {
+    return this._onReceived(msg, read)
+  }
+  receiveHQVoice (msg, read)
+  {
+    return this._onReceived(msg, read)
+  }
+  receiveRichContent (msg, read)
+  {
+    return this._onReceived(msg, read)
+  }
+  receiveGroupNotification (msg, read)
+  {
+    return this._onReceived(msg, read)
   }
 
   getConversations ()
@@ -163,7 +224,7 @@ class MessageStorage
     this._cStorage.updateItem(targetId, updater)
   }
   removeConversation (targetId)
-  {
+  { // conversationType, targetId
     this.remove(targetId) // 先删除消息
     return this._cStorage.removeItem(targetId) // 删除会话
   }

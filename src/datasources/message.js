@@ -73,12 +73,13 @@ const statusStrings = {
 
 export class Messager
 {
-  constructor(identify, receiver)
+  constructor(identify, onStatusChange, receiver)
   {
     connect(identify, (status, socket) =>
     {
       this.status = { code: status, message: statusStrings[status] }
       this.socket = socket || this.socket
+      onStatusChange({ ...this.status })
     }, receiver)
   }
   send (message)
