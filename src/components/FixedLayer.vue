@@ -53,6 +53,7 @@ export default {
     },
     close ()    
     {
+      this.$emit('update:close', false)
       this.$emit('update:visible', false)
     }
   }

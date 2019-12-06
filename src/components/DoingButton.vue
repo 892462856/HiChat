@@ -3,9 +3,9 @@
           :class="{doing:doing}"
           @click.stop="submit">
     {{value}}
-    <i v-show="doing"
+    <i v-if="doing"
        title="忙碌中……"
-       class="fa fa-spinner"
+       class="fa fa-spinner fa-spin"
        aria-hidden="true"></i>
   </button>
 </template>
@@ -14,18 +14,6 @@
 /**
  * button，是否忙碌中。
  */
-
-const spining = function (el)
-{
-  let i = 0
-  const n = setInterval(() =>  
-  {
-    i += 2
-    el.style.transform = `rotate(${i}deg)`
-    i = i > 360 ? i - 360 : i
-  }, 10)
-  return n
-}
 
 export default {
   props: {
@@ -41,29 +29,6 @@ export default {
     }
   },
   name: 'doingButton',
-  mounted ()  
-  {
-    if (this.doing)    
-    {
-      this._n = spining(this.$el.querySelector('.fa-spinner'))
-    }
-  },
-  watch: {
-    doing: {
-      handler (val)      
-      {
-        if (val)        
-        {
-          this._n = spining(this.$el.querySelector('.fa-spinner'))
-        }
-        else if (this._n)        
-        {
-          clearInterval(this._n)
-        }
-      },
-      immediate: false
-    }
-  },
   methods: {
     submit ()    
     {

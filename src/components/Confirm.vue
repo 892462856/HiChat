@@ -1,19 +1,35 @@
 <template>
-  <el-dialog :title="title" :visible.sync="visible" :width="width" :before-close="onClose">
-    <span v-if="content" v-html="content"></span>
-    <span slot="footer">
-      <button class="button" @click="submit">确 定</button>
-      <button class="button cancelButton" @click="onClose">取 消</button>
-    </span>
-  </el-dialog>
+  <fixedLayer :visible.sync="visible"
+              @close="onClose">
+    <div class="confirm"
+         :style="{width:width}">
+      <div class="confirm-head"
+           v-if="title">{{title}}</div>
+
+      <div class="confirm-content"
+           v-if="content"
+           v-html="content">
+      </div>
+      <slot v-else></slot>
+
+      <span class="confirm-footer">
+        <button class="button"
+                @click="submit">确 定</button>
+        <button class="button cancelButton"
+                @click="onClose">取 消</button>
+      </span>
+    </div>
+  </fixedLayer>
 </template>
 
 <script>
 /**
  * confirm对话框
  */
+import fixedLayer from './FixedLayer.vue'
+
 export default {
-  template: '<div>{{visible}}</div>',
+  components: { fixedLayer },
   props: {
     visible: {
       type: Boolean,
@@ -37,17 +53,17 @@ export default {
     onOk: {
       type: Function,
       required: false,
-      default: () => {}
+      default: () =>
+      { }
     }
   },
-  data() {
-    return {}
-  },
   methods: {
-    onClose() {
+    onClose ()    
+    {
       this.$emit('update:visible', false)
     },
-    submit() {
+    submit ()    
+    {
       this.$emit('update:visible', false)
       this.onOk()
     }
