@@ -334,44 +334,47 @@ const saveMessage = function (msg, read)
 }
 
 const messageHandlers = {
-  [MessageType.text]: message => message,
-  [MessageType.image]: message => message,
-  [MessageType.file]: message => message,
-  [MessageType.video]: message => message,
-  [MessageType.voice]: message => message,
-  [MessageType.sys]: message => message,
-  [MessageType.groupMsgs]: (msg) =>
+  [MessageType.text]: (message, read) => saveMessage(message, read),
+  [MessageType.image]: (message, read) => saveMessage(message, read),
+  [MessageType.file]: (message, read) => saveMessage(message, read),
+  [MessageType.video]: (message, read) => saveMessage(message, read),
+  [MessageType.voice]: (message, read) => saveMessage(message, read),
+  [MessageType.sys]: (message, read) => saveMessage(message, read),
+  [MessageType.groupMsgs]: (message, read) =>
   {
-    return msg
-  },
-  [MessageType.renameGroup]: (msg) =>
-  {
-    if (('status' in msg) && msg.status !== 2) return
-
-    const groups = store.getters.groups
-    const group = groups.find(t => t.id === msg.targetId)
-    if (group)
+    return mStorage.saveItems(message, read).then(({ messages, convr }) =>
     {
-      group.name = msg.content.groupName
-      store.commit('update_groups', groups)
-    }
-    return msg
+      appendMessagesToChat(messages) // 如果是当前聊天窗口的消息，则追加到currentChatMessages
+      if (convr) updateConvrs(convr)
+      return { messages, convr }
+    })
+  },
+  [MessageType.renameGroup]: (message, read) =>
+  {
+    return saveMessage(message, read).then(({ message, convr }) =>
+    {
+      if (('status' in message) && message.status !== 2)
+      {
+        const groups = store.getters.groups
+        const group = groups.find(t => t.id === message.targetId)
+        if (group)
+        {
+          group.name = message.content.groupName
+          store.commit('update_groups', groups)
+        }
+      }
+      return { message, convr }
+    })
   }, // 修改群名称
-  default: message => message
+  default: (message, read) => saveMessage(message, read),
 }
-
 const messageHandler = function (message, read)
 {
-  let result = null
-  if (message.type !== MessageType.groupMsgs)
-  {
-    saveMessage(message, read)
-  }
   const _messageHandlers = messageHandlers[message.type] || messageHandlers.default
-  return _messageHandlers(message).then(message => { })
+  return _messageHandlers(message, read)
 }
 
-export const LinkCommunicationAndListening = function ()
+export const ConnectAndListening = function ()
 {
   return msger(store.getters.myInfo.id
     , (status) => store.commit('update_commStatus', status)
@@ -382,11 +385,11 @@ export const LinkCommunicationAndListening = function ()
     })
 }
 
-const sendMessage = function (type)
+const sendMessageHandle = function (type)
 {
   return function (msgObj)
   {
-    const msg = new models.Message({
+    const newMessage = new models.Message({
       ...msgObj,
       type,
       sendTime: new Date(),
@@ -395,24 +398,17 @@ const sendMessage = function (type)
       status: 0
     })
 
-    const _messageHandler = messageHandler[msg.type] || messageHandler.default
-    return _messageHandler(msg, true)
-      .then(message => saveMessage(message, true))
-      .then(({ message, convr }) => msger.send(message)) // send befor | send after
-      .catch((message) =>
-      {
-        message.status = -1
-        return _messageHandler(message, true)
-      })
-      .then(message => _messageHandler(message, true))
-      .then(message => saveMessage(message, true))
+    return messageHandler(newMessage, true)
+      .then(({ message }) => msger.send(message)) // send befor | send after
+      .then(message => (delete message.status, message), message => (message.status = -1, message))
+      .then(message => messageHandler(message, true))
   }
 }
 
-export const sendText = sendMessage(MessageType.text)
-export const sendImage = sendMessage(MessageType.image)
-export const sendVideo = sendMessage(MessageType.video)
-export const sendFile = sendMessage(MessageType.file)
+export const sendText = sendMessageHandle(MessageType.text)
+export const sendImage = sendMessageHandle(MessageType.image)
+export const sendVideo = sendMessageHandle(MessageType.video)
+export const sendFile = sendMessageHandle(MessageType.file)
 
 export const exitGroup = function (groupId)
 {
