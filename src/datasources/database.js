@@ -77,6 +77,10 @@ export default class DataSource
     return this.serve.post('/logout')
   }
 
+  getFriend (friendId)
+  {
+    return this.serve.get('/friend', friendId)
+  }
   getFriends ()
   {
     return this.serve.get('/friend/list')
@@ -98,6 +102,10 @@ export default class DataSource
     return this.serve.delete('/friend/black', { id })
   }
 
+  getGroup (groupId)
+  {
+    return this.serve.get('/group', groupId)
+  }
   getGroups ()
   {
     return this.serve.get('/group/list')
@@ -113,6 +121,10 @@ export default class DataSource
   updateGroupName ({ name, id })
   {
     return this.serve.post('/group/name', { name, id })
+  }
+  getGroupMembersBy (groupId, usersId)
+  {
+    return this.serve.get('/groupMember', { groupId, usersId })
   }
   getGroupMembers (groupId)
   {

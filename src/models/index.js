@@ -58,6 +58,7 @@ const Convr = function ({
   latestMessage: { id, cid, type, content, callList = [] }
 })
 {
+  this.target = null
   this.targetId = targetId
   this.targetType = targetType
   this.senderId = senderId

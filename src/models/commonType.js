@@ -28,5 +28,6 @@ export const TargetType = {
 }
 
 export default {
-  MessageType
+  MessageType,
+  TargetType
 }

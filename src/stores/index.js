@@ -30,7 +30,7 @@ const commonErrorMonitor = function (type, error)
 }
 const ds = new DataSource(commonErrorMonitor)
 const msger = new Messager(caches.get(keys.myInfo) ? caches.get(keys.myInfo).id : null)
-let mStorage = new MessageStorage(caches.get(keys.myInfo) ? caches.get(keys.myInfo).id : 'xxxx')
+let msgStorage = new MessageStorage(caches.get(keys.myInfo) ? caches.get(keys.myInfo).id : 'xxxx')
 const caches = new CommonCacheAccessor(window.sessionStorage)
 
 const store = new Vuex.Store({
@@ -83,7 +83,7 @@ const store = new Vuex.Store({
     {
       if (!state.convrs && store.getters.myInfo.id)
       {
-        mStorage.getConvrs().then(list => store.commit('update_convrs', list))
+        msgStorage.getConvrs().then(list => store.commit('update_convrs', list))
       }
       return state.convrs || []
     },
@@ -94,23 +94,7 @@ const store = new Vuex.Store({
         store.commit('update_chats', caches.get(keys.chats))
       }
       return state.chats || {}
-    },
-    // currentChatTarget: state =>
-    // {
-    //   if (state.currentChatTarget === null  && store.getters.myInfo.id)
-    //   {
-    //     store.commit('update_currentChatTarget', caches.get(keys.currentChatTarget))
-    //   }
-    //   return state.currentChatTarget || {}
-    // },
-    // currentChatMessages: state =>
-    // {
-    //   if (state.currentChatMessages === null && store.getters.myInfo.id)
-    //   {
-    //     mStorage.get(store.getters.currentChatTarget.targetId).then(list => store.commit('update_currentChatMessages', list))
-    //   }
-    //   return state.currentChatMessages || []
-    // }
+    }
   },
   mutations: {
     update_commStatus (state, status)
@@ -139,45 +123,70 @@ const store = new Vuex.Store({
     },
     update_convrs (state, list)
     {
+      const getTargetsPromises = list.filter(t => !t.target).map(convr =>
+      {
+        const target = convr.targetType === TargetType.friend
+          ? store.state.friends.find(t => t.id === convr.targetId)
+          : store.state.groups.find(t => t.id === convr.targetId)
+        if (target) return Promise.resolve(target)
+
+        const getTargetPromise = target
+          ? Promise.resolve(target)
+          : convr.targetType === TargetType.friend
+            ? ds.getFriend(convr.targetId).then(friend =>
+            {
+              const friends = store.state.friends
+              friends.unshift(friend)
+              store.commit('update_friends', friends)
+              return friend
+            })
+            : ds.getGroup(convr.targetId).then(group =>
+            {
+              const groups = store.state.groups
+              groups.unshift(group)
+              store.commit('update_groups', groups)
+              return group
+            })
+
+        getTargetPromise.then(target =>
+        {
+          convr.target = target
+        })
+      })
+      Promise.allSettled(getTargetsPromises).then(() =>
+      {
+        store.commit('update_convrs', store.getters.convrs)
+      })  // +target
+
       state.convrs = list
     },
     update_chats (state, targets)
     {
       const chats = store.getters.chats
-      const newTargets = targets.filter(target => !chats[target.id])
-      newTargets.forEach(target => chats[target.id] = { target, messages: [] })
-      const msgGetters = newTargets.map(target =>
       {
-        return mStorage.get(target.id)
-          .then(storage => ({ targetId: target.id, messages: storage }))
-      })
-      Promise.all(msgGetters).then(results =>
-      {
-        chats[results.targetId].messages = results.messages
-        store.commit('update_chats', chats)
+        const newTargets = targets.filter(target => !chats[target.id])
+        newTargets.forEach(target => chats[target.id] = { target, messages: [] })
+        const msgGetters = newTargets.map(target =>
+        {
+          return msgStorage.get(target.id)
+            .then(storage => ({ targetId: target.id, messages: storage }))
+        })
+        Promise.all(msgGetters).then(results =>
+        {
+          chats[results.targetId].messages = results.messages
+          store.commit('update_chats', chats)
 
-        results.forEach(result => mStorage.readConvr(result.targetId))
-        store.commit('update_convrs', store.getters.convrs)
-      })
+          results.forEach(result => msgStorage.readConvr(result.targetId))
+          store.commit('update_convrs', store.getters.convrs)
+        })
+      } // new targets
+      {
+        // message+sender
+      }
 
       caches.set(keys.chats, chats)
       state.chats = chats
     }
-    // update_currentChatTarget (state, target)
-    // {
-    //   caches.set(keys.currentChatTarget, target)
-    //   state.currentChatTarget = target
-    //   store.commit('update_currentChatMessages', null)
-
-    //   if (target && target.targetId)
-    //   {
-    //     store.commit('updateToRead_conversation', target.targetId)
-    //   }
-    // },
-    // update_currentChatMessages (state, list)
-    // {
-    //   state.currentChatMessages = list
-    // }
   }
 })
 
@@ -187,7 +196,7 @@ export const login = function ({ mobile, password })
 {
   return ds.login({ mobile, password }).then(myInfo =>
   {
-    mStorage = new MessageStorage(myInfo.id)
+    msgStorage = new MessageStorage(myInfo.id)
     store.commit('update_myInfo', myInfo)
     return myInfo
   })
@@ -210,7 +219,7 @@ export const logoutState = function ()
   store.commit('update_friends', null)
   store.commit('update_groups', null)
   store.commit('update_convrs', null)
-  mStorage = null
+  msgStorage = null
 } // 清除store
 
 export const updateLMW = (name) => store.commit('update_lmw', name)
@@ -284,10 +293,10 @@ const removeGroup = function (targetId, flag = true)
   store.commit('update_groups', groups)
 }
 
-export const addFriend = (mobile) => ds.addFriend(mobile).then(friend => appendFriend(friend))
-export const addGroup = (name, membersId) => ds.addGroup({ name, membersId }).then(group => appendGroup(group))
+export const addFriend = (mobile) => ds.addFriend(mobile).then(friend => appendFriend(friend)) // 加Friend可以不用调appendFriend，因为会有消息
+export const addGroup = (name, membersId) => ds.addGroup({ name, membersId }).then(group => appendGroup(group)) // 加群可以不用调appendGroup，因为会有消息
 
-const updateConvrs = function (convr)
+const replaceConvr = function (convr)
 {
   if (!convr) return
   let list = store.getters.convrs
@@ -297,7 +306,7 @@ const updateConvrs = function (convr)
 }
 export const removeConvr = function (targetId)
 {
-  return mStorage.removeConvr(targetId).then(() =>
+  return msgStorage.removeConvr(targetId).then(() =>
   {
     store.commit('update_convrs', store.getters.convrs.filter(t => t.targetId !== targetId))
     const chats = store.getters.chats
@@ -325,10 +334,10 @@ const appendMessagesToChat = function (messages)
 
 const saveMessage = function (msg, read)
 {
-  return mStorage.saveItem(msg, read).then(({ message, convr }) =>
+  return msgStorage.saveItem(msg, read).then(({ message, convr }) =>
   {
     appendMessagesToChat([message]) // 如果是当前聊天窗口的消息，则追加到currentChatMessages
-    if (convr) updateConvrs(convr)
+    if (convr) replaceConvr(convr)
     return { message, convr }
   })
 }
@@ -342,10 +351,10 @@ const messageHandlers = {
   [MessageType.sys]: (message, read) => saveMessage(message, read),
   [MessageType.groupMsgs]: (message, read) =>
   {
-    return mStorage.saveItems(message, read).then(({ messages, convr }) =>
+    return msgStorage.saveItems(message, read).then(({ messages, convr }) =>
     {
       appendMessagesToChat(messages) // 如果是当前聊天窗口的消息，则追加到currentChatMessages
-      if (convr) updateConvrs(convr)
+      if (convr) replaceConvr(convr)
       return { messages, convr }
     })
   },
